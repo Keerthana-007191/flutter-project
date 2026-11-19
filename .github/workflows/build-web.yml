@@ -1,36 +1,56 @@
-name: Build Web App
+
+name: Deploy Flutter Project
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  build-web:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Find the Flutter project folder
-        id: proj
-        run: echo "dir=$(dirname "$(find . -name pubspec.yaml -not -path './.git/*' | head -n 1)")" >> "$GITHUB_OUTPUT"
-
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Add web platform files
-        working-directory: ${{ steps.proj.outputs.dir }}
-        run: |
-          cp lib/main.dart /tmp/main.dart
-          cp pubspec.yaml /tmp/pubspec.yaml
-          flutter create --platforms=web --project-name doctor_appointments --org com.lab .
-          cp /tmp/main.dart lib/main.dart
-          cp /tmp/pubspec.yaml pubspec.yaml
+      - name: Enable Flutter Web
+        run: flutter create --platforms web .
 
-      - name: Build web app
-        working-directory: ${{ steps.proj.outputs.dir }}
-        run: flutter build web --release
+      - name: Install dependencies
+        run: flutter pub get
 
-      - uses: actions/upload-artifact@v4
+      - name: Build Flutter Web
+        run: flutter build web --release --base-href /flutter-project/
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: doctor-appointments-web
-          path: ${{ steps.proj.outputs.dir }}/build/web
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
